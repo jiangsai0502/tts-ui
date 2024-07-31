@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QSlider,
-    QFileDialog,  # 新增：导入QFileDialog用于文件选择
+    QFileDialog,
 )
 from PyQt5.QtCore import pyqtSlot, QThread, pyqtSignal, Qt, QUrl
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
@@ -52,21 +52,41 @@ async def process_segment(segment, voice):
         return segment_audio
 
 
-async def run_tts(text, voice, finished_callback):
+# async def run_tts(text, voice, finished_callback):
+#     # 将文本分段，每段不超过 MAX_SEGMENT_LENGTH 字符
+#     segments = [text[i : i + MAX_SEGMENT_LENGTH] for i in range(0, len(text), MAX_SEGMENT_LENGTH)]
+#     combined_audio = b""
+#     try:
+#         for segment in segments:
+#             if segment.strip():  # 处理非空段落
+#                 segment_audio = await process_segment(segment, voice)
+#                 combined_audio += segment_audio
+#         with open(OUTPUT_FILE, "wb") as f:
+#             f.write(combined_audio)
+#     except Exception as e:
+#         finished_callback(f"出现意外错误：{e}")
+#         return
+#     finished_callback("语音生成完毕！")
+
+
+async def run_tts(text, voice, progress_callback, finished_callback):
     # 将文本分段，每段不超过 MAX_SEGMENT_LENGTH 字符
     segments = [text[i : i + MAX_SEGMENT_LENGTH] for i in range(0, len(text), MAX_SEGMENT_LENGTH)]
     combined_audio = b""
     try:
-        for segment in segments:
+        total_segments = len(segments)
+        for i, segment in enumerate(segments):
             if segment.strip():  # 处理非空段落
                 segment_audio = await process_segment(segment, voice)
                 combined_audio += segment_audio
+                progress_callback(i + 1, total_segments)  # 更新进度
+        finished_callback("转录完成，音频合并中...")  # 修改：更新状态信息
         with open(OUTPUT_FILE, "wb") as f:
             f.write(combined_audio)
     except Exception as e:
         finished_callback(f"出现意外错误：{e}")
         return
-    finished_callback("语音生成完毕！")
+    finished_callback("语音文件生成完毕！")  # 修改：更新状态信息
 
 
 def start_background_task(loop, text, voice, finished_callback):
@@ -74,8 +94,21 @@ def start_background_task(loop, text, voice, finished_callback):
     loop.run_until_complete(run_tts(text, voice, finished_callback))
 
 
+# class TTSWorker(QThread):
+#     finished = pyqtSignal(str)
+#     def __init__(self, text, voice):
+#         super().__init__()
+#         self.text = text
+#         self.voice = voice
+#     def run(self):
+#         loop = asyncio.new_event_loop()
+#         asyncio.set_event_loop(loop)
+#         loop.run_until_complete(run_tts(self.text, self.voice, self.finished.emit))
+
+
 class TTSWorker(QThread):
     finished = pyqtSignal(str)
+    progress = pyqtSignal(int, int)  # 新增：定义进度信号
 
     def __init__(self, text, voice):
         super().__init__()
@@ -85,7 +118,7 @@ class TTSWorker(QThread):
     def run(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(run_tts(self.text, self.voice, self.finished.emit))
+        loop.run_until_complete(run_tts(self.text, self.voice, self.progress.emit, self.finished.emit))
 
 
 class TTSApp(QWidget):
@@ -109,13 +142,11 @@ class TTSApp(QWidget):
         self.player.error.connect(self.handle_error)
 
         # 创建界面元素
-        # self.layout = QVBoxLayout(self)
         self.text_input = QTextEdit()
         self.text_input.setPlaceholderText("请输入文字...")
         self.layout.addWidget(self.text_input)
 
         self.voice_dropdown = QComboBox()
-        # self.voice_dropdown.addItems(DEFAULT_VOICE)
         self.voice_dropdown.addItems(list(DEFAULT_VOICE.keys()))
         self.layout.addWidget(self.voice_dropdown)
 
@@ -144,10 +175,10 @@ class TTSApp(QWidget):
             }
         """
         # 上传按钮
-        self.load_button = QPushButton("上传TXT文件", self)  # 新增：按钮用于加载txt文件
+        self.load_button = QPushButton("上传TXT文件", self)
         self.load_button.setStyleSheet(button_style)
-        self.load_button.clicked.connect(self.load_text_file)  # 新增：连接按钮点击事件到加载函数
-        self.button_layout.addWidget(self.load_button)  # 新增：将按钮添加到布局中
+        self.load_button.clicked.connect(self.load_text_file)
+        self.button_layout.addWidget(self.load_button)
 
         # 生成按钮
         self.generate_button = QPushButton("生成")
@@ -194,10 +225,6 @@ class TTSApp(QWidget):
         # 将进度条布局添加到垂直布局中
         self.layout.addLayout(self.progress_layout)
 
-        # 初始化定时器
-        self.animation_timer = QTimer(self)
-        self.animation_timer.timeout.connect(self.update_status_animation)
-
         # 连接播放器信号
         self.player.durationChanged.connect(self.duration_changed)
         self.player.positionChanged.connect(self.position_changed)
@@ -210,7 +237,6 @@ class TTSApp(QWidget):
     def set_position(self, position):
         # 当用户正在拖动滑块时，不要更新播放器的位置
         if not self.userIsInteracting:
-            # print(f"设置播放位置: {position}")  # 调试信息
             self.player.setPosition(position)
 
     def slider_pressed(self):
@@ -372,12 +398,9 @@ class TTSApp(QWidget):
         self.open_file_button.setDisabled(True)
         self.play_button.setDisabled(True)
 
-        # 开始动画
-        self.animation_index = 0
-        self.animation_timer.start(500)
-
         self.tts_thread = TTSWorker(text, voice_id)
         self.tts_thread.finished.connect(self.tts_finished)
+        self.tts_thread.progress.connect(self.update_progress)  # 新增：连接进度信号到槽函数
         self.tts_thread.start()
 
     def unload_and_remove_old_audio(self):
@@ -393,16 +416,12 @@ class TTSApp(QWidget):
         except Exception as e:
             print(f"删除旧音频文件时出错: {e}")
 
-    def update_status_animation(self):
-        animation_states = ["生成中", "生成中.", "生成中..", "生成中..."]
-        self.status_label.setText(animation_states[self.animation_index])
-        self.animation_index = (self.animation_index + 1) % len(animation_states)
+    @pyqtSlot(int, int)
+    def update_progress(self, current, total):
+        self.status_label.setText(f"共需转录 {total} 个文件，正在转录第 {current} 个")  # 修改：更新进度信息
 
     @pyqtSlot(str)
     def tts_finished(self, message):
-        # 停止动画
-        self.animation_timer.stop()
-
         # 启用所有按钮
         self.generate_button.setDisabled(False)
         self.open_file_button.setDisabled(False)
