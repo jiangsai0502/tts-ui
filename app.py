@@ -52,23 +52,6 @@ async def process_segment(segment, voice):
         return segment_audio
 
 
-# async def run_tts(text, voice, finished_callback):
-#     # 将文本分段，每段不超过 MAX_SEGMENT_LENGTH 字符
-#     segments = [text[i : i + MAX_SEGMENT_LENGTH] for i in range(0, len(text), MAX_SEGMENT_LENGTH)]
-#     combined_audio = b""
-#     try:
-#         for segment in segments:
-#             if segment.strip():  # 处理非空段落
-#                 segment_audio = await process_segment(segment, voice)
-#                 combined_audio += segment_audio
-#         with open(OUTPUT_FILE, "wb") as f:
-#             f.write(combined_audio)
-#     except Exception as e:
-#         finished_callback(f"出现意外错误：{e}")
-#         return
-#     finished_callback("语音生成完毕！")
-
-
 async def run_tts(text, voice, progress_callback, finished_callback):
     # 将文本分段，每段不超过 MAX_SEGMENT_LENGTH 字符
     segments = [text[i : i + MAX_SEGMENT_LENGTH] for i in range(0, len(text), MAX_SEGMENT_LENGTH)]
@@ -92,18 +75,6 @@ async def run_tts(text, voice, progress_callback, finished_callback):
 def start_background_task(loop, text, voice, finished_callback):
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run_tts(text, voice, finished_callback))
-
-
-# class TTSWorker(QThread):
-#     finished = pyqtSignal(str)
-#     def __init__(self, text, voice):
-#         super().__init__()
-#         self.text = text
-#         self.voice = voice
-#     def run(self):
-#         loop = asyncio.new_event_loop()
-#         asyncio.set_event_loop(loop)
-#         loop.run_until_complete(run_tts(self.text, self.voice, self.finished.emit))
 
 
 class TTSWorker(QThread):
@@ -377,7 +348,6 @@ class TTSApp(QWidget):
     def start_tts(self):
         if self.text_input.toPlainText().strip() != "":
             self.loaded_text = None  # 清除 loaded_text 内容
-
         text = (
             self.loaded_text
             if hasattr(self, "loaded_text") and self.loaded_text
@@ -385,19 +355,15 @@ class TTSApp(QWidget):
         )  # 修改：使用加载的文本（如果有）或文本编辑框中的文本
         selected_voice_name = self.voice_dropdown.currentText()
         voice_id = DEFAULT_VOICE.get(selected_voice_name)  # 获取语音 ID，如果找不到则使用默认值
-
         if text.strip() == "":
             self.status_label.setText("请输入一些文本！")
             return
-
         # 在生成新的语音文件之前，卸载并尝试删除旧文件
         self.unload_and_remove_old_audio()
-
         # 禁用所有按钮
         self.generate_button.setDisabled(True)
         self.open_file_button.setDisabled(True)
         self.play_button.setDisabled(True)
-
         self.tts_thread = TTSWorker(text, voice_id)
         self.tts_thread.finished.connect(self.tts_finished)
         self.tts_thread.progress.connect(self.update_progress)  # 新增：连接进度信号到槽函数
@@ -407,12 +373,10 @@ class TTSApp(QWidget):
         # 停止播放器并卸载当前媒体
         self.player.stop()
         self.player.setMedia(QMediaContent())
-
         # 尝试删除旧的音频文件
         try:
             if os.path.exists(OUTPUT_FILE):
                 os.remove(OUTPUT_FILE)
-                # print("旧音频文件已删除")
         except Exception as e:
             print(f"删除旧音频文件时出错: {e}")
 
