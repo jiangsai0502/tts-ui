@@ -29,12 +29,12 @@ desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
 OUTPUT_FILE = os.path.join(desktop_path, "output.mp3")
 
 DEFAULT_VOICE = {
+    "云夏": "zh-CN-YunxiaNeural",
+    "云健": "zh-CN-YunjianNeural",
     "云扬": "zh-CN-YunyangNeural",
     "晓晓": "zh-CN-XiaoxiaoNeural",
     "晓伊": "zh-CN-XiaoyiNeural",
-    "云健": "zh-CN-YunjianNeural",
     "云希": "zh-CN-YunxiNeural",
-    "云夏": "zh-CN-YunxiaNeural",
 }
 
 MAX_SEGMENT_LENGTH = 1000  # 设置每个文本段的最大长度
@@ -70,6 +70,12 @@ async def run_tts(text, voice, progress_callback, finished_callback):
         finished_callback(f"出现意外错误：{e}")
         return
     finished_callback("语音文件生成完毕！")  # 修改：更新状态信息
+    play_completion_sound()  # 新增：播放系统提示音
+
+
+def play_completion_sound():
+    # 新增：播放系统提示音
+    os.system("afplay /System/Library/Sounds/Glass.aiff")
 
 
 def start_background_task(loop, text, voice, finished_callback):
