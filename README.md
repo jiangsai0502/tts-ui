@@ -36,19 +36,3 @@ pip install -r requirements.txt
 ```bash
 python app.py
 ```
-
-## 贡献
-
-感谢开源项目：
-https://github.com/rany2/edge-tts
-
-## 许可证
-
-本项目根据 [MIT 许可证]()  授权。
-
-## 注意事项
-本项目仅供学习和研究使用，不得用于商业用途。
-欢迎加入知识星球，里面包括各种工具及教程，每日更新！！！
-![image](https://github.com/smallnew666/edge-tts-ui/assets/24582880/3cd267b7-d2ff-41ab-94d1-efefcc3fcbf9)
-
-
