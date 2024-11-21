@@ -36,36 +36,56 @@ DEFAULT_VOICE = {
 MAX_SEGMENT_LENGTH = 100  # 设置每个文本段的最大长度
 
 
+def split_text(text, max_length=MAX_SEGMENT_LENGTH):
+    """
+    按标点符号分段，并限制每段的最大字符数
+    """
+    sentences = re.split(r"(。|！|\!|\.|？|\?)", text)  # 按标点符号分割
+    segments = []
+    current_segment = ""
+    for sentence in sentences:
+        if sentence.strip():
+            if len(current_segment) + len(sentence) <= max_length:
+                current_segment += sentence
+            else:
+                segments.append(current_segment.strip())
+                current_segment = sentence
+    if current_segment.strip():
+        segments.append(current_segment.strip())
+    return segments
+
 async def process_segment(segment, voice):
-    if re.match(r"\{pause=\d+\}", segment):
-        return b""  # 或者根据需要返回空字节，或者删除这个分支
-    else:
-        communicate = edge_tts.Communicate(segment, voice)
-        segment_audio = b""
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                segment_audio += chunk["data"]
-        return segment_audio
+    """
+    合成单个文本段的语音
+    """
+    communicate = edge_tts.Communicate(segment, voice)
+    segment_audio = b""
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            segment_audio += chunk["data"]
+    return segment_audio
+
 
 
 async def run_tts(text, voice, progress_callback, finished_callback):
-    # 将文本分段，每段不超过 MAX_SEGMENT_LENGTH 字符
-    segments = [text[i : i + MAX_SEGMENT_LENGTH] for i in range(0, len(text), MAX_SEGMENT_LENGTH)]
+    # 使用 split_text 方法按标点符号和长度分段，分段处理文本，并合成完整音频
+    segments = split_text(text)
     combined_audio = b""
     try:
         total_segments = len(segments)
         for i, segment in enumerate(segments):
             if segment.strip():  # 处理非空段落
+                progress_callback(i + 1, total_segments)  # 更新进度
                 segment_audio = await process_segment(segment, voice)
                 combined_audio += segment_audio
-                progress_callback(i + 1, total_segments)  # 更新进度
-        finished_callback("转录完成，音频合并中...")  # 修改：更新状态信息
+
+        finished_callback("转录完成，音频合并中...")
         with open(OUTPUT_FILE, "wb") as f:
             f.write(combined_audio)
     except Exception as e:
         finished_callback(f"出现意外错误：{e}")
         return
-    play_completion_sound()  # 新增：播放系统提示音
+    play_completion_sound()  # 播放完成提示音
 
 
 def play_completion_sound():
